@@ -14,6 +14,7 @@
 [ -v BAHELITE_MODULE_LOGGING_VER ] && return 0
 #  Declaring presence of this module for other modules.
 BAHELITE_MODULE_LOGGING_VER='1.0'
+required_utils+=(date mktemp)
 
 
  # Call this function to start logging.

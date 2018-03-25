@@ -14,7 +14,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_MESSAGES_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_MESSAGES_VER='1.0'
+BAHELITE_MODULE_MESSAGES_VER='1.1'
 
 # Bahelite offers keyword-based messages, which allows
 # for creation of localised programs.
@@ -293,8 +293,9 @@ plainmsg() {
 #    Returns zero otherwise.
 #
 msg() {
-	local msgtype c cs=$__s nonl asterisk='  ' message redir code=5 internal \
-	      key msg_key_exists notifysend_rank notifysend_icon
+	local msgtype=msg  c=  cs=$__s  nonl  asterisk='  '  message \
+	      redir  code=5  internal  key  msg_key_exists \
+	      notifysend_rank  notifysend_icon
 	case "${FUNCNAME[1]}" in
 		*info*)  # all *info*
 			msgtype=info
@@ -375,7 +376,7 @@ msg() {
 	# This allows strings to be split across lines and at the same time
 	# be well-indented with tabs and/or spaces – indentation will be cut
 	# from the output.
-	message=`sed -r 's/^\s*//; s/\n\t/\n/g' <<<"$message"`
+	message=$(sed -r 's/^\s*//; s/\n\t/\n/g' <<<"$message")
 	# Both fold and fmt use smaller width,
 	# if they deal with non-Latin characters.
 	if [ -v BAHELITE_FOLD_MESSAGES ]; then
@@ -386,8 +387,10 @@ msg() {
 		eval "echo -e ${nonl:-} \"$c$asterisk$cs$message$__s\" \
 	          | sed -r \"1s/^/${MI#  }/; 1!s/^/$MI/g\" ${redir:-}"
 	fi
-	[ ${notifysend_rank:--1} -ge 1 ] \
-		&& bahelite_notify_send "$message" ${notifysend_icon:-}
+	[ ${notifysend_rank:--1} -ge 1 ] && {
+		# Stripping colours, that might be placed in the $message by user.
+		bahelite_notify_send "$(strip_colours "$message")" ${notifysend_icon:-}
+	}
 	[ "$msgtype" = err ] && {
 		# If this is an error message, we must also quit
 		# with a certain exit/return code.

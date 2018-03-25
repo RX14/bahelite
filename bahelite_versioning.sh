@@ -15,7 +15,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_VERSIONING_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_VERSIONING_VER='1.0'
+BAHELITE_MODULE_VERSIONING_VER='1.1'
 
 # It is *highly* recommended to use “set -eE” in whatever script
 # you’re going to source it from.
@@ -127,6 +127,14 @@ update_version() {
 	sed -ri "s/^(\s*(declare\s+-r\s+|))$varname=['\"]?[0-9\.]+['\"]?\s*$/\1$varname='$new_version'/" "$file"
 	xtrace_on
 	return 0
+}
+
+ # Returns 0, if the passed string is a valid version number
+#  (X, X.Y or X.Y.Z), or 1 otherwise.
+#  $1 – version string
+#
+is_version_valid() {
+	[[ "$1" =~ ^[0-9]{1,12}(\.[0-9]{1,12}){0,2}$ ]]
 }
 
  # Compares two versions

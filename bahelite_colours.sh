@@ -13,7 +13,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_COLOURS_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_COLOURS_VER='1.0'
+BAHELITE_MODULE_COLOURS_VER='1.0.1'
 
 
  # Colours for messages.
@@ -26,7 +26,7 @@ __y='\e[33m'    # yellow
 __bl='\e[34m'    # blue
 __ma='\e[35m'    # magenta
 __cy='\e[36m'    # cyan
-__ma='\e[37m'    # white
+__wh='\e[37m'    # white
 
 __s='\e[0m'     # stop
 __b='\e[1m'     # bright/bold.
@@ -42,5 +42,20 @@ __d='\e[39m'    # default fg
 info_colour=$__g
 warn_colour=$__y
 err_colour=$__r
+
+ # Strip colours from the string
+#  Useful for when the message should go somewhere where terminal control
+#  combinations wouldn’t be recognised.
+#
+strip_colours() {
+	local str="$1" c c_val
+	for c in __bk __r __g __y __bl __ma __cy __wh __s __b __dim __u __inv \
+	         __hid __rb __d; do
+	    declare -n c_val=$c
+	    str=${str//${c_val//\\/\\\\}/}
+	done
+	echo "$str"
+	return 0
+}
 
 return 0

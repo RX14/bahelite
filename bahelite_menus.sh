@@ -84,10 +84,10 @@ menu() {
 	local au=${graphic[7]}  # arrow up
 	local di=${graphic[8]}  # diamond
 	chosen_idx=0
-	[ "$OVERRIDE_DEFAULT" ] && chosen_idx="$OVERRIDE_DEFAULT"
+	[ "${OVERRIDE_DEFAULT:-}" ] && chosen_idx="$OVERRIDE_DEFAULT"
 	[ "${FUNCNAME[1]}" = carousel ] && mode=carousel
-	prompt="$1" && shift
-	while option="$1"; [ "$option" ]; do
+	prompt="${1:-}" && shift
+	while option="${1:-}"; [ "$option" ]; do
 		optvals+=("${option#*---}")
 		option=${option%---*}
 		[ "${option/_*_}" ] || {
