@@ -19,7 +19,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_ERROR_HANDLING_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_ERROR_HANDLING_VER='1.2'
+BAHELITE_MODULE_ERROR_HANDLING_VER='1.2.1'
 
  # Stores values, that environment variable $LINENO takes, in an array.
 #
@@ -103,6 +103,7 @@ bahelite_on_each_command() {
 	#echo "${BAHELITE_STORED_LNOS[*]}"
 	return 0
 }
+[ -o functrace ] || set -T  # Otherwise this trap would have little sense.
 trap 'bahelite_on_each_command "$LINENO"' DEBUG
 
 bahelite_on_exit() {
