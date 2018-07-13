@@ -14,7 +14,11 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_MESSAGES_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_MESSAGES_VER='1.1'
+BAHELITE_MODULE_MESSAGES_VER='1.2'
+
+ # Define this variable for info messages to have icon
+#
+# BAHELITE_INFO_MSG_USE_ICON=t
 
 # Bahelite offers keyword-based messages, which allows
 # for creation of localised programs.
@@ -62,21 +66,27 @@ declare -A BAHELITE_ERROR_MESSAGES=(
 #  $2 – icon type: empty, “information”, “warning” or “error”.
 #
 bahelite_notify_send() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	[ -v NO_DESKTOP_NOTIFICATIONS ] && return 0
-	local msg="$1" icon="$2" duration
+	local msg="$1" icon="$2" duration urgency
 	case "$icon" in
-		warning|error) duration=5000;;  # warning, error: 5s
-		*) duration=3000;;  # info: 3s
+		dialog-error)
+			urgency=critical
+			;&
+		dialog-warning)
+			duration=10000
+			;;
+		*) duration=3000 urgency=normal;;  # info: 3s
 	esac
 	# The hint is for the message to not pile in the stack – it is limited.
 	# ||:  is for running safely under set -e.
 	which notify-send &>/dev/null \
 		|| warn 'Cannot show error message on desktop: notify-send not found.'
-	notify-send --hint int:transient:1 -t $duration \
-	            "${MY_MSG_TITLE:-$MYNAME}" "$msg" \
-	            ${icon:+--icon=dialog-$icon}|| :
-	xtrace_on
+	notify-send --hint int:transient:1 \
+	            --urgency "$urgency" \
+	            -t $duration \
+	            "${MY_MSG_TITLE:-$MYNAME}"  "$msg" \
+	            ${icon:+--icon=$icon} || :
 	return 0
 }
 
@@ -89,28 +99,31 @@ MI_LEVEL=0  # Debug indentation level. Default is 0.
 MI_SPACENUM=4  # Number of spaces to use per indentation level
 MI_CHARS=''  # Accumulates spaces for one portion of indentation
 for ((i=0; i<MI_SPACENUM; i++)); do MI_CHARS+=' '; done
+MI=''  # The message indentation string itself.
 
 mi_assemble() {
+	# Internal! There should be no xtrace_off!
 	local z
-	MI=
+	MI=''
 	for ((z=0; z<MI_LEVEL; z++)); do MI+=$MI_CHARS; done
 	# Without this, multiline messages that occur on MI_LEVEL=0,
 	# when $MI is empty, won’t be indented properly. ‘* ’, remember?
 	[ "$MI" ] || MI='  '
 	return 0
 }
+xtrace_off
 mi_assemble
+xtrace_on
 
  # Increments the indentation level.
 #  [$1] — number of times to increment $MI_LEVEL.
 #         The default is to increment by 1.
 #
 milinc() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	local count=${1:-1} z mi_as_result
 	for ((z=0; z<count; z++)); do ((MI_LEVEL++, 1)); done
 	mi_assemble; mi_as_result=$?
-	xtrace_on
 	return $mi_as_result
 }
 
@@ -119,7 +132,7 @@ milinc() {
 #  The default is to decrement by 1.
 #
 mildec() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	local count=${1:-1} z mi_as_result
 	if [ $MI_LEVEL -eq 0 ]; then
 		warn "No need to decrease indentation, it’s on the minimum."
@@ -127,7 +140,6 @@ mildec() {
 		for ((z=0; z<count; z++)); do ((MI_LEVEL--, 1)); done
 		mi_assemble; mi_as_result=$?
 	fi
-	xtrace_on
 	return $mi_as_result
 }
 
@@ -135,7 +147,7 @@ mildec() {
 #  $1 – desired indentation level, 0..9999.
 #
 milset () {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	local _mi_level=$1 mi_as_result
 	[[ "$_mi_level" =~ ^[0-9]{1,4}$ ]] || {
 		warn "Indentation level should be an integer between 0 and 9999."
@@ -143,17 +155,15 @@ milset () {
 	}
 	MI_LEVEL=$_mi_level
 	mi_assemble; mi_as_result=$?
-	xtrace_on
 	return $mi_as_result
 }
 
  # Removes any indentation.
 #
 mildrop() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	MI_LEVEL=0
 	mi_assemble; local mi_as_result=$?
-	xtrace_on
 	return $mi_as_result
 }
 
@@ -163,18 +173,16 @@ mildrop() {
 #       the messages. Depends on whether $MSG_USE_ARRAYS is set (see above).
 #
 info() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	msg "$@"
-	xtrace_on
 }
 
  # Same as info(), but omits the ending newline, like “echo -n” does.
 #  This allows to print whatever with just simple “echo” later.
 #
 infon() {
-	xtrace_off
-	nonl=t msg "$@"
-	xtrace_on
+	xtrace_off && trap xtrace_on RETURN
+	msg "$@"
 }
 
  # Like info(), but has a higher rank than usual info(),
@@ -182,9 +190,8 @@ infon() {
 #  $1 – a message to be shown both in console and on desktop.
 #
 info-ns() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	msg "$@"
-	xtrace_on
 }
 
  # Shows an info message and waits for the given command to finish,
@@ -197,7 +204,7 @@ info-ns() {
 #       Handy for faulty programs that return 0 even on error.
 #
 infow() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	local message=$1 command=$2 force_output="$3" outp result
 	msg "$message"
 	outp=$( bash -c "$command" 2>&1 )
@@ -211,15 +218,14 @@ infow() {
 		plainmsg "$outp"
 		mildec
 	}
-	xtrace_on
+	return 0
 }
 
  # Like info, but the output goes to stderr. Dimmed yellow asterisk.
 #
 warn() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	msg "$@"
-	xtrace_on
 }
 
  # Like warn(), but has a higher rank than usual info(),
@@ -227,39 +233,34 @@ warn() {
 #  $1 – a message to be shown both in console and on desktop.
 #
 warn-ns() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	msg "$@"
-	xtrace_on
 }
 
  # Shows message and then calls exit. Red asterisk.
 #  If MSG_USE_ARRAYS is not set, the default exit code is 5.
 #
 err() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	msg "$@"
-	xtrace_on
 }
 
  # Same as err(), but prints the whole line in red.
 #
 errw() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	msg "$@"
-	xtrace_on
 }
 
  # For Bahelite internal warnings and errors.
 #
 iwarn() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	msg "$@"
-	xtrace_on
 }
 ierr() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	msg "$@"
-	xtrace_on
 }
 
  # For internal use in alias functions, such as infow(), where we cannot use
@@ -268,9 +269,8 @@ ierr() {
 #  from another function, for which no additions are specified in msg().
 #
 plainmsg() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	msg "$@"
-	xtrace_on
 }
 
 
@@ -293,9 +293,11 @@ plainmsg() {
 #    Returns zero otherwise.
 #
 msg() {
-	local msgtype=msg  c=  cs=$__s  nonl  asterisk='  '  message \
-	      redir  code=5  internal  key  msg_key_exists \
-	      notifysend_rank  notifysend_icon
+	# Internal! There should be no xtrace_off!
+	# xtrace_off && trap xtrace_on RETURN
+	local msgtype=  c=  cs=$__s  nonl  asterisk='  '  message  \
+	      message_nocolours redir=stdout  code=5  internal  key  \
+	      msg_key_exists  notifysend_rank  notifysend_icon
 	case "${FUNCNAME[1]}" in
 		*info*)  # all *info*
 			msgtype=info
@@ -307,29 +309,32 @@ msg() {
 			;;&
 		info-ns)
 			notifysend_rank=1
-			notifysend_icon='information'
+			[ -v BAHELITE_INFO_MSG_USE_ICON ] && notifysend_icon='info'
 			;;
 		infow)
 			asterisk="* ${MSG_ASTERISK_PLUS_WORD:+RUNNING: }"
 			nonl=t
 			;;
+		infon)
+			nonl=t
+			;;
 		*warn*)
-			msgtype=warn redir='>&2'
+			msgtype=warn redir='stderr'
 			local -n  msg_array=WARNING_MESSAGES
 			local -n  c=warn_colour
 			asterisk="* ${MSG_ASTERISK_PLUS_WORD:+WARNING: }"
 		    ;;&
 		warn-ns)
 			notifysend_rank=1
-			notifysend_icon='warning'
+			notifysend_icon='dialog-warning'
 			;;
 		*err*)
-			msgtype=err redir='>&2'
+			msgtype=err redir='stderr'
 			local -n  msg_array=ERROR_MESSAGES
 			local -n  c=err_colour
 			asterisk="* ${MSG_ASTERISK_PLUS_WORD:+ERROR: }"
 			notifysend_rank=1
-			notifysend_icon='error'
+			notifysend_icon='dialog-error'
 			;;&
 		errw)
 			asterisk='  '
@@ -342,7 +347,7 @@ msg() {
 			# For internal messages.
 			local -n  msg_array=BAHELITE_WARNING_MESSAGES
 			notifysend_rank=1
-			notifysend_icon='warning'
+			notifysend_icon='dialog-warning'
 			;;
 		ierr)
 			# For internal messages.
@@ -350,7 +355,7 @@ msg() {
 			;;
 	esac
 	[ -v nonl ] && nonl='-n'
-	[ -v QUIET ] && redir='>/dev/null'
+	[ -v QUIET ] && redir='devnull'
 	[ -v MSG_USE_ARRAYS -o -v internal ] && {
 		# What was passed to us is not a message, but a key
 		# of a corresponding array.
@@ -377,19 +382,25 @@ msg() {
 	# be well-indented with tabs and/or spaces – indentation will be cut
 	# from the output.
 	message=$(sed -r 's/^\s*//; s/\n\t/\n/g' <<<"$message")
+	message_nocolours=$(strip_colours "$message")
 	# Both fold and fmt use smaller width,
 	# if they deal with non-Latin characters.
 	if [ -v BAHELITE_FOLD_MESSAGES ]; then
-		eval "echo -e ${nonl:-} \"$c$asterisk$cs$message$__s\" \
-		      | fold  -w $((TERM_COLS - MI_LEVEL*MI_SPACENUM -2)) -s \
-		      | sed -r \"1s/^/${MI#  }/; 1!s/^/$MI/g\" ${redir:-}"
+		message=$(echo -e ${nonl:-} "$c$asterisk$cs$message$__s" \
+		          | fold  -w $((TERM_COLS - MI_LEVEL*MI_SPACENUM -2)) -s \
+		          | sed -r "1s/^/${MI#  }/; 1!s/^/$MI/g" )
 	else
-		eval "echo -e ${nonl:-} \"$c$asterisk$cs$message$__s\" \
-	          | sed -r \"1s/^/${MI#  }/; 1!s/^/$MI/g\" ${redir:-}"
+		message=$(echo -e ${nonl:-} "$c$asterisk$cs$message$__s" \
+		          | sed -r "1s/^/${MI#  }/; 1!s/^/$MI/g" )
 	fi
+	case $redir in
+		stdout)  echo ${nonl:-} "$message";;
+		stderr)  echo ${nonl:-} "$message" >&2;;
+		devnull) : ;;
+	esac
 	[ ${notifysend_rank:--1} -ge 1 ] && {
 		# Stripping colours, that might be placed in the $message by user.
-		bahelite_notify_send "$(strip_colours "$message")" ${notifysend_icon:-}
+		bahelite_notify_send "$message_nocolours" "${notifysend_icon:-}"
 	}
 	[ "$msgtype" = err ] && {
 		# If this is an error message, we must also quit
@@ -402,5 +413,6 @@ msg() {
 	}
 	return 0
 }
+
 
 return 0

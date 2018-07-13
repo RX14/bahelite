@@ -13,27 +13,28 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_LOGGING_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_LOGGING_VER='1.0'
+BAHELITE_MODULE_LOGGING_VER='1.1.1'
 required_utils+=(date mktemp)
 
 
  # Call this function to start logging.
 #
 start_log() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	local arg
-	LOGDIR="$MYDIR/${MYNAME%.sh}_logs"
+	LOGDIR="$MYDIR/logs"
 	[ -d "$LOGDIR" -a -w "$LOGDIR" ] || {
 		mkdir "$LOGDIR" &>/dev/null || {
 			LOGDIR="$(mktemp -d)/logs"
 			mkdir "$LOGDIR"
 		}
 	}
-	LOG="$LOGDIR/${MYNAME}_$(date +%Y-%m-%d_%H:%M:%S).log"
+	LOG="$LOGDIR/${MYNAME%.sh}_$(date +%Y-%m-%d_%H:%M:%S).log"
 	# Removing old logs, keeping maximum of $LOG_KEEP_COUNT of recent logs.
 	cd "$LOGDIR"
 	noglob_off
-	ls -r * | tail -n+$((${BAHELITE_LOG_MAX_COUNT:=5})) \
+	ls -r "${MYNAME%.sh}_"* \
+	        | tail -n+$((${BAHELITE_LOG_MAX_COUNT:=5})) \
 	        | xargs rm -v &>/dev/null || :
 	noglob_on
 	cd - >/dev/null
@@ -43,12 +44,11 @@ start_log() {
 		echo "ARGS[$i] = ${ARGS[i]}" >>"$LOG"
 	done
 	exec &> >(tee -a $LOG)
-	xtrace_on
 	return 0
 }
 
 show_path_to_log() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	if [ -v BAHELITE_MODULE_MESSAGES_VER ]; then
 		info "Log is written to
 		      $LOG"
@@ -58,8 +58,26 @@ show_path_to_log() {
 		$LOG
 		EOF
 	fi
-	xtrace_on
 	return 0
 }
+
+ # Returns an absolute path to the last modified log in $LOGDIR.
+#  [$1] – log name prefix, if not set, equal to $MYNAME
+#         without .sh at the end (caller script’s own log).
+#
+get_last_log() {
+	xtrace_off && trap xtrace_on RETURN
+	local logname="${1:-}" last_log
+	[ "$logname" ] || logname=${MYNAME%.sh}
+	pushd "$LOGDIR" >/dev/null
+	noglob_off
+	last_log=$(ls -tr ${logname}_* | tail -n1)
+	noglob_on
+	[ -f "$last_log" ] || return 1
+	popd >/dev/null
+	echo "$LOGDIR/$last_log"
+	return 0
+}
+
 
 return 0

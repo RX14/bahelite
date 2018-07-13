@@ -15,7 +15,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_VERSIONING_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_VERSIONING_VER='1.1'
+BAHELITE_MODULE_VERSIONING_VER='1.1.1'
 
 # It is *highly* recommended to use “set -eE” in whatever script
 # you’re going to source it from.
@@ -27,7 +27,7 @@ BAHELITE_MODULE_VERSIONING_VER='1.1'
 #       must occur in the code only once and be the only command on the line.
 #
 update_version() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	local file="$1" varname="$2" old_version new_version \
 	      old_major old_minor old_patch \
 	      major_nines minor_nines patch_nines \
@@ -125,7 +125,6 @@ update_version() {
 		errexit_on
 	fi
 	sed -ri "s/^(\s*(declare\s+-r\s+|))$varname=['\"]?[0-9\.]+['\"]?\s*$/\1$varname='$new_version'/" "$file"
-	xtrace_on
 	return 0
 }
 
@@ -134,7 +133,10 @@ update_version() {
 #  $1 – version string
 #
 is_version_valid() {
-	[[ "$1" =~ ^[0-9]{1,12}(\.[0-9]{1,12}){0,2}$ ]]
+	xtrace_off && trap xtrace_on RETURN
+	[[ "$1" =~ ^[0-9]{1,12}(\.[0-9]{1,12}){0,2}$ ]] \
+		&& return 0 \
+		|| return 1
 }
 
  # Compares two versions
@@ -143,7 +145,7 @@ is_version_valid() {
 #  RETURNS the bigger one or “equal” if they’re equal.
 #
 compare_versions() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	local i old_version="$1" new_version="$2"
 	IFS='.' old_version=( $1 )
 	IFS='.' new_version=( $2 )
@@ -165,7 +167,6 @@ compare_versions() {
 		fi
 	done
 	echo 'equal'
-	xtrace_on
 	return 0
 }
 

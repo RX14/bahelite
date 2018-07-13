@@ -48,6 +48,7 @@ err_colour=$__r
 #  combinations wouldn’t be recognised.
 #
 strip_colours() {
+	xtrace_off && trap xtrace_on RETURN
 	local str="$1" c c_val
 	for c in __bk __r __g __y __bl __ma __cy __wh __s __b __dim __u __inv \
 	         __hid __rb __d; do
@@ -57,5 +58,6 @@ strip_colours() {
 	echo "$str"
 	return 0
 }
+
 
 return 0

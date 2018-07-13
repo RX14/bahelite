@@ -15,7 +15,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_GITHUB_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_GITHUB_VER='1.0'
+BAHELITE_MODULE_GITHUB_VER='1.0.1'
 required_utils+=(date stat ps wget xdg-open)
 
  # Default interval, that check_for_new_release() will use to look
@@ -52,11 +52,13 @@ RELEASE_CHECK_TIMESTAMP="$MYDIR/updater_timestamp"
 #    or parsing input.
 #
 check_for_new_release() {
+	xtrace_off && trap xtrace_on RETURN
 	local days_since_last_check=$((
 		(   $(date +%s)
 		   - $(stat -L --format %Y "$RELEASE_CHECK_TIMESTAMP")
-		) / 60 / 60 / 24                                        ))
-	[ $days_since_last_check -lt $NEW_RELEASE_CHECK_INTERVAL ] && return 1
+		) / 60 / 60 / 24                                        ,1 ))
+	[ $days_since_last_check -lt $NEW_RELEASE_CHECK_INTERVAL ] \
+		&& return 1
 	local user="$1" repo="$2" our_ver="$3" relnotes_url="${4:-}" \
 	      relnotes_action="${5:-}"  latest_release_ver  \
 	      which_is_newer  message  open_relnotes_url
@@ -122,3 +124,6 @@ check_for_new_release() {
 	fi
 	return 0
 }
+
+
+return 0

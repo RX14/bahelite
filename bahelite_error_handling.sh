@@ -19,7 +19,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_ERROR_HANDLING_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_ERROR_HANDLING_VER='1.2.1'
+BAHELITE_MODULE_ERROR_HANDLING_VER='1.3.0'
 
  # Stores values, that environment variable $LINENO takes, in an array.
 #
@@ -70,7 +70,7 @@ BAHELITE_MODULE_ERROR_HANDLING_VER='1.2.1'
 #    failing there.
 #  Catching the errors of type 2 already requires a trap on DEBUG signal.
 #    I’ve made a prototype of this module, that uses this trap to also check
-#    the return value of the last executed command. Much like the the trap
+#    the return value of the last executed command. Much like the trap
 #    on EXIT does, but “one step before”. It was possible to catch a line like
 #        $((  1/0  ))
 #    but the trap on DEBUG could not be used. Yes, because it doesn’t
@@ -87,6 +87,7 @@ BAHELITE_MODULE_ERROR_HANDLING_VER='1.2.1'
 BAHELITE_STORED_LNOS=()
 
 bahelite_on_each_command() {
+	xtrace_off && trap xtrace_on RETURN
 	local i line_number="$1"
 	# We don’t need more than two stored LINENO’s:
 	# - one for the failed command we want to catch,
@@ -100,11 +101,55 @@ bahelite_on_each_command() {
 	BAHELITE_STORED_LNOS[0]=$line_number
 	# Call user’s on_debug(), if defined.
 	[ "$(type -t on_debug)" = 'function' ] && on_debug
-	#echo "${BAHELITE_STORED_LNOS[*]}"
+	#  Output to stdout during DEBUG trap may produce unwanted output
+	#    into $(subshell calls), so you better NEVER output anything
+	#    in traps on DEBUG, or at least always use >&2 and make sure
+	#    you never add stderr to stdout in $(subshell calls) like $(… 2>&1).
+	#  Xdialog has --stdout option to produce output in stdout instead
+	#    of stderr.
+	# echo "${BAHELITE_STORED_LNOS[*]}" >&2
 	return 0
 }
-[ -o functrace ] || set -T  # Otherwise this trap would have little sense.
-trap 'bahelite_on_each_command "$LINENO"' DEBUG
+
+ # Trap on DEBUG may cause pipes hang (still in bash 4.4).
+#    Try “echo "something" | xclip” in your script, where “set -T” is set.
+#    trapondebug set/unset allows to temporarily disable the trap and run
+#    failing pipes safely.
+#  Trap on DEBUG isn’t enabled automatically for this reason. You may enable
+#    it for better error handling with “trapondebug set”, and that means,
+#    that you already know about that rare problem with pipes and know, that
+#    this trap should be temporarily unset in order to avoid it.
+#
+trapondebug() {
+	xtrace_off && trap xtrace_on RETURN
+	case "$1" in
+		set)
+			[ -o functrace ] || {
+				info "BAHELITE: enabling functrace for better error handling.
+				      (To remove this message put “set -T” before sourcing bahelite.sh."
+				set -T  # Without functrace option set this trap would have little sense.
+			}
+			#  Note the single quotes – to prevent early expansion
+			trap 'bahelite_on_each_command "$LINENO"' DEBUG
+			#  This is for the overridden set -x and set +x
+			BAHELITE_TRAPONDEBUG_SET=t
+			;;
+		unset)
+			#  trap '' DEBUG will ignore the signal.
+			#  trap - DEBUG will reset command to 'bahelite_on_each_command… '.
+			trap '' DEBUG
+			# This is for debug_on and debug_off
+			unset BAHELITE_TRAPONDEBUG_SET
+			;;
+	esac
+	return 0
+}
+
+ #  Not enabled by default.
+#   (see the description to “trapondebug” function above).
+#
+#trapondebug set
+
 
 bahelite_on_exit() {
 	local command="$1" retval="$2" stored_lnos="$3"
@@ -113,7 +158,10 @@ bahelite_on_exit() {
 	#    do not trigger SIGERR, so they must be caught on exit.
 	#  If the main script runs in the background, the user
 	#    won’t even see an error without this.
+	#  “exit” is te only command that allowed to quit with non-zero safely.
+	#    It implies, that the error was handled.
 	[ $retval -ne 0  -a  ! -v BAHELITE_ERROR_PROCESSED ] \
+		&&  ! [[ "$command" =~ ^exit ]] \
 		&& bahelite_show_error "$command" "$retval" \
 		                       "from_on_exit" "${stored_lnos##* }"
 	#  Run user’s on_exit().
@@ -127,18 +175,23 @@ bahelite_on_exit() {
 trap 'bahelite_on_exit "$BASH_COMMAND" "$?" "${BAHELITE_STORED_LNOS[*]}"' \
      EXIT TERM INT QUIT KILL HUP
 
+
 bahelite_show_error() {
+	#  Disabling xtrace, for even if the programmer has put set +x where needed,
+	#  but the program quits between them, there will be a lot of trace,
+	#  that the programmer doesn’t need.
+	builtin set +x
 	local i line_number_to_print failed_command=$1 failed_command_code=$2 \
 	      from_on_exit="${3:-}" real_line_number=${4:-}
-	# Since an error happened, all the following output is supposed
-	# to go to stderr.
-	exec 2>&1
+	# Since an error occurred, let all output go to stderr by default.
+	# Bad idea: to put “exec 2>&1” here
 	# Run user’s on_error().
 	[ "$(type -t on_error)" = 'function' ] && on_error
-	xtrace_off
-	echo -en "${__b}--- Call stack "
-	for ((i=0; i<TERM_COLS-15; i++)); do echo -n '-'; done
-	echo -e "${__s}"
+	trap '' DEBUG
+	xtrace_off && trap xtrace_on RETURN
+	echo -en "${__b}--- Call stack " >&2
+	for ((i=0; i<TERM_COLS-15; i++)); do  echo -n '-';  done
+	echo -e "${__s}" >&2
 	for ((f=${#FUNCNAME[@]}-1; f>0; f--)); do
 		# Hide on_exit, as the error only bypasses through there
 		# We don’t show THIS function in the call stack, right?
@@ -154,15 +207,15 @@ bahelite_show_error() {
 			}
 		}
 		# echo "Printing FUNCNAME[$f], BASH_LINENO[$((f-1))], BASH_SOURCE[$f]"
-		echo -en "${__b}${FUNCNAME[f]}${__s}, "
-		echo -e  "line $line_number_to_print in ${BASH_SOURCE[f]}"
+		echo -en "${__b}${FUNCNAME[f]}${__s}, " >&2
+		echo -e  "line $line_number_to_print in ${BASH_SOURCE[f]}" >&2
 	done
-	echo -en "Command: "
+	echo -en "Command: " >&2
 	( echo -en  "${__b}$failed_command${__s} ${__b}${__r}"
-	  echo -en  "(exit code: $failed_command_code)${__s}." ) \
+	  echo -en  "(exit code: $failed_command_code)${__s}." ) \
 	    | fold -w $((TERM_COLS-9)) -s \
-	    | sed -r '1 !s/^/         /g'
-	echo -e ""
+	    | sed -r '1 !s/^/         /g' >&2
+	echo
 	bahelite_notify_send "Bash error. See console." error
 	# Tell trap on EXIT, that $? > 0 was caused by an error, which
 	# has triggered SIGERR, we’ve already processed this error,
@@ -173,7 +226,6 @@ bahelite_show_error() {
 		      $LOG"
 		echo -n "$LOG" | xclip ||:
 	}
-	xtrace_on
 	return 0
 }
 
@@ -182,7 +234,7 @@ bahelite_show_error() {
 #  the associated trap.
 #
 traponerr() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	case "$1" in
 		set)
 			#  Note the single quotes – to prevent early expansion
@@ -190,13 +242,13 @@ traponerr() {
 			;;
 		unset)
 			#  trap '' ERR will ignore the signal.
-			#  trap - ERR will reset command to 'bahelite_show_error "$BASH_SOURCE…'
+			#  trap - ERR will reset command to 'bahelite_show_error… '.
 			trap '' ERR
 			;;
 	esac
-	xtrace_on
 	return 0
 }
 traponerr set
+
 
 return 0

@@ -21,13 +21,11 @@ BAHELITE_MODULE_MISC_VER='1.0'
 
 
 if_true() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	declare -n var=$1
 	if [[ "$var" =~ ^(y|Y|[Yy]es|1|t|T|[Tt]rue|[Oo]n|[Ee]nable[d])$ ]]; then
-		xtrace_on
 		return 0
 	elif [[ "$var" =~ ^(n|N|[Nn]o|0|f|F|[Ff]alse|[Oo]ff|[Dd]isable[d])$ ]]; then
-		xtrace_on
 		return 1
 	else
 		if [ -v BAHELITE_MODULE_MESSAGES_VER ]; then
@@ -40,7 +38,6 @@ if_true() {
 			EOF
 		fi
 	fi
-	xtrace_on
 	return 0
 }
 
@@ -49,13 +46,13 @@ if_true() {
 #    $1..n – variable names
 #
 dumpvar() {
-	xtrace_off
+	xtrace_off && trap xtrace_on RETURN
 	local var
 	for var in "$@"; do
 		msg "$(declare -p $var)"
 	done
-	xtrace_on
 	return 0
 }
+
 
 return 0

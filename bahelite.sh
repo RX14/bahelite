@@ -48,7 +48,7 @@
 	}
 }
 
-BAHELITE_VERSION="2.0"
+BAHELITE_VERSION="2.2"
 #  $0 == -bash if the script is sourced.
 [ -f "$0" ] && {
 	MYNAME=${0##*/}
@@ -74,20 +74,119 @@ LOG=/dev/null
 #
 BAHELITE_HIDE_FROM_XTRACE=t
 
+
+ # Overrides ‘set’ bash builtin to change beahviour of set ±x:
+#    regular set -x output would include traponeachcommand(),
+#    which is triggered by trapondebug(), which is necessary for precise
+#    tracing in case of an error, but it clogs the normal trace, when user
+#    calls set -x.
+#  Thus there needs to be a hook on set -x that will temporarily
+#    unset trap_on_debug, and bring it back on set +x.
+#  There were special functions debug_on and debug_off, that
+#    were intended to use instead of ‘set ±x’, but the habit of using
+#    ‘set ±x’ is too strong, so this function has to be made.
+#
+set() {
+	#  Hiding the output of the function itself.
+	builtin set +x
+	local command=()
+	if [ "$1" = -x ]; then
+		[ -v BAHELITE_TRAPONDEBUG_SET ] && {
+			#  The purpose of trapondebug is to catch the line, where
+			#  an error happened, better and provide a sensible trace stack.
+			#  When the programmer enables xtrace, he already got the infor-
+			#  mation from the trapondebug, so we disable it on the time
+			#  of enabling xtrace, for it will clog the output dramatically.
+			trapondebug unset
+			declare -g BAHELITE_BRING_BACK_TRAPONDEBUG=t
+		}
+		command=(builtin set -x)
+	elif [ "$1" = +x ]; then
+		command=(builtin set +x)
+		[ -v BAHELITE_BRING_BACK_TRAPONDEBUG ] && {
+			unset BAHELITE_BRING_BACK_TRAPONDEBUG
+			#  When xtrace if switched off, we can bring the trap on debug
+			#  back. The desired behaviour is solely to clear the shell trace
+			#  from bahelite functions.
+			#  This enables functrace / set -T!
+			#  Functions will inherit trap on RETURN!
+			#
+			#  Disabled here, because trapondebug is disabled by default,
+			#  until the cooperation with xtrace would be completed.
+			# trapondebug set
+		}
+	else
+		#  For any arguments, that are not ‘-x’ or ‘+x’,
+		#    pass them as they are.
+		#  This is a potential bug, as adding -x in the
+		#  main ‘set’ declaration like
+		#      set -xfeEu  #T
+		#  or using “-o xtrace” will not use the override above.
+		#  Hopefully, everyone would just use ‘set -x’ or ‘set +x’.
+		command=(builtin set "$@")
+	fi
+	"${command[@]}"  # No “return”, to not confuse people looking at trace.
+}
+
+
  # To turn off xtrace (set -x) output during the execution
 #  of Bahelite own functions.
 #
 xtrace_off() {
-	[ -v BAHELITE_HIDE_FROM_XTRACE  -a  -o xtrace ] && {
-		set +x
-		declare -g BAHELITE_BRING_BACK_XTRACE=t
+	 # This prevents disabling xtrace recursively.
+	#  In case some higher level function would call a lower-level function
+	#  and both of them would use xtrace_off, xtrace_on would break off
+	#  the hiding once it’s called inside the lover-level function, and we
+	#  need to hide trace until xtrace_on would be called in the higher
+	#  level function
+	#[ -z "$BAHELITE_XTRACE_HIDING_KEY" ] && {
+	[ ! -v BAHELITE_BRING_XTRACE_BACK ] && {
+		 # If xtrace is not enabled, we have nothing to do.
+		#    Calling xtrace_off by mistake may initiate unwanted hiding,
+		#    which will lead to unexpected results.
+		#  Essentially, this prevents calling it by a lowskilled user mistake.
+		[ -o xtrace ] || return 0
+
+		 # When set -x enables trace, the commands are prepended with ‘+’.
+		#  To differentiate between user’s commands and bahelite,
+		#  we temporarily change ‘+’ to ‘⋅’
+		declare -g OLD_PS4="$PS4" && declare -g PS4='⋅'
+		[ -v BAHELITE_HIDE_FROM_XTRACE ] && {
+			builtin set +x
+			declare -g BAHELITE_BRING_XTRACE_BACK=${#FUNCNAME[*]}
+		}
+		return 0
 	}
-	return 0
+	return 1
 }
 xtrace_on() {
-	[ -v BAHELITE_BRING_BACK_XTRACE ] && {
-		unset BAHELITE_BRING_BACK_XTRACE
-		set -x
+	(( ${BAHELITE_BRING_XTRACE_BACK:-0} == ${#FUNCNAME[*]} )) && {
+		unset BAHELITE_BRING_XTRACE_BACK
+		builtin set -x
+		#  Salty experience of learning how traps on RETURN work resulted
+		#  in the following:
+		#  - a trap on RETURN defined in a function persists after that func-
+		#    tion quits. That means that one cannot set a trap on RETURN on
+		#    entering a function and hope that it will only work once. Even
+		#    though without “functrace” shell option set other functions
+		#    *will not* inherit it, the source command *will*. In other words,
+		#    each time you source an external file and the control returns
+		#    back to the main file, the trap on RETURN triggers;
+		#  - thus the trap on RETURN has a global scope anyway – and that
+		#    means, that it’s possible to remove it from global scope when it
+		#    completes what it needs. This way set/unset should come strictly
+		#    in pairs – as needed for hiding xtrace diving into bahelite func-
+		#    tions;
+		#  - in order to be sure, that the return trap is executed and unset
+		#    only the level, when it was set, BAHELITE_BRING_XTRACE_BACK
+		#    contains the current function nesting level.
+		trap '' RETURN
+		#  Restoring the original PS4.
+		#  Currently doesn’t work well, because xtrace off and on somehow
+		#  don’t go in pairs sometimes. Needs an investigation.
+		#  Most users presumably don’t alter PS4 anyway, so just set it to ‘+’.
+		#declare -g PS4="${OLD_PS4:-+}"
+		declare -g PS4='+'
 	}
 	return 0
 }
@@ -113,8 +212,10 @@ errexit_on() {
 	return 0
 }
 
- # To turn off noglob (set -f) temporarily.
-#  This comes handy when shell needs to use globbing like for “ls *.sh”.
+ # (For internal use) To turn off noglob (set -f) temporarily,
+#    but bring it back to the main script’s defaults afterwards.
+#  This comes handy when shell needs to use globbing like for “ls *.sh”,
+#    but it is disabled by default for safety.
 #
 noglob_off() {
 	[ -o noglob ] && {
@@ -131,11 +232,13 @@ noglob_on() {
 	return 0
 }
 
+
 noglob_off
 for bahelite_module in "$BAHELITE_DIR"/bahelite_*.sh; do
 	. "$bahelite_module" || return 5
 done
 noglob_on
+
 
 [ -v BAHELITE_MODULE_MESSAGES_VER ] || {
 	echo "Bahelite needs module messages, but it wasn’t sourced." >&2
@@ -178,5 +281,6 @@ read -d '' major minor  < <(  \
 	&& ( [ $major -gt 2 ] || [ $major -eq 2  -a  $minor -ge 20 ] ) \
 	|| err old_utillinux
 unset major minor
+
 
 return 0
