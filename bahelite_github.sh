@@ -16,19 +16,25 @@
 [ -v BAHELITE_MODULE_GITHUB_VER ] && return 0
 #  Declaring presence of this module for other modules.
 BAHELITE_MODULE_GITHUB_VER='1.0.1'
-required_utils+=(date stat ps wget xdg-open)
+REQUIRED_UTILS+=(date stat ps wget xdg-open)
 
  # Default interval, that check_for_new_release() will use to look
 #  for a new release. You can redefine it after sourcing bahelite.sh
 #
-NEW_RELEASE_CHECK_INTERVAL=21 # each N days
+NEW_RELEASE_CHECK_INTERVAL=21  # each N days
 
- # Default path, where release check timestamp should be placed.
+
+ # Confirms, that updater_timestamp exists.
 #  The timestamp is used to maintain the specified interval between checks.
 #  Can be overriden after sourcing bahelite.sh.
 #
-RELEASE_CHECK_TIMESTAMP="$MYDIR/updater_timestamp"
-[ -f "$RELEASE_CHECK_TIMESTAMP" ] || touch "$RELEASE_CHECK_TIMESTAMP"
+create_updater_timestamp() {
+	#  Default path, where release check timestamp should be placed.
+	declare -g RELEASE_CHECK_TIMESTAMP="${CACHEDIR:-$MYDIR}/updater_timestamp"
+	[ -f "$RELEASE_CHECK_TIMESTAMP" ] || touch "$RELEASE_CHECK_TIMESTAMP"
+	return 0
+}
+
 
  # Downloads “Releases” page of a github repo and compares the version
 #  of the latest release to the current version of the program.
@@ -53,6 +59,7 @@ RELEASE_CHECK_TIMESTAMP="$MYDIR/updater_timestamp"
 #
 check_for_new_release() {
 	xtrace_off && trap xtrace_on RETURN
+	create_updater_timestamp
 	local days_since_last_check=$((
 		(   $(date +%s)
 		   - $(stat -L --format %Y "$RELEASE_CHECK_TIMESTAMP")

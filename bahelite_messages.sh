@@ -14,7 +14,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_MESSAGES_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_MESSAGES_VER='1.2'
+BAHELITE_MODULE_MESSAGES_VER='2.0.1'
 
  # Define this variable for info messages to have icon
 #
@@ -29,10 +29,7 @@ declare -A BAHELITE_INFO_MESSAGES=()
 
  # List of warning messages
 #
-declare -A BAHELITE_WARNING_MESSAGES=(
-	[no such msg]='Internal: No such message: ‘$failed_message’.'
-	[no util]='“$util” is required but wasn’t found.'
-)
+declare -A BAHELITE_WARNING_MESSAGES=()
 
  # List of error messages
 #  Keys are used as parameters to err() and values are printed via msg().
@@ -43,8 +40,10 @@ declare -A BAHELITE_WARNING_MESSAGES=(
 #
 declare -A BAHELITE_ERROR_MESSAGES=(
 	[just quit]='Quitting.'
-	[old utillinux]='Need util-linux-2.20 or higher.'
+	[old util-linux]='Need util-linux-2.20 or higher.'
 	[missing deps]='Dependencies are not satisfied.'
+	[no such msg]='Bahelite: No such message: “$1”.'
+	[no util]='Utils are missing: $1.'
 )
 
 
@@ -68,15 +67,22 @@ declare -A BAHELITE_ERROR_MESSAGES=(
 bahelite_notify_send() {
 	xtrace_off && trap xtrace_on RETURN
 	[ -v NO_DESKTOP_NOTIFICATIONS ] && return 0
-	local msg="$1" icon="$2" duration urgency
+	local msg="$1" icon="$2" duration urgency='normal'
 	case "$icon" in
+		error)
+			icon='dialog-error'
+			;&
 		dialog-error)
 			urgency=critical
+			duration=10000
+			;;
+		warning)
+			icon='dialog-warning'
 			;&
 		dialog-warning)
 			duration=10000
 			;;
-		*) duration=3000 urgency=normal;;  # info: 3s
+		*) duration=3000;;  # info: 3s
 	esac
 	# The hint is for the message to not pile in the stack – it is limited.
 	# ||:  is for running safely under set -e.
@@ -85,7 +91,7 @@ bahelite_notify_send() {
 	notify-send --hint int:transient:1 \
 	            --urgency "$urgency" \
 	            -t $duration \
-	            "${MY_MSG_TITLE:-$MYNAME}"  "$msg" \
+	            "$MY_DESKTOP_NAME"  "$msg" \
 	            ${icon:+--icon=$icon} || :
 	return 0
 }
@@ -221,7 +227,7 @@ infow() {
 	return 0
 }
 
- # Like info, but the output goes to stderr. Dimmed yellow asterisk.
+ # Like info, but the output goes to stderr.
 #
 warn() {
 	xtrace_off && trap xtrace_on RETURN
@@ -237,22 +243,29 @@ warn-ns() {
 	msg "$@"
 }
 
- # Shows message and then calls exit. Red asterisk.
-#  If MSG_USE_ARRAYS is not set, the default exit code is 5.
+ # Shows an error message and calls “exit”.
+#  Error messages always go
+#    - to console in stderr, prepended with red asterisk;
+#    - to desktop with notify-send, with “crirical” urgency
+#      and a corresponding icon.
+#  The exit code is 5, unless you explicitly set MSG_USE_ARRAYS and defined
+#    error messages with corresponding codes in the table.
 #
 err() {
 	xtrace_off && trap xtrace_on RETURN
-	msg "$@"
+	msg "$@" || exit $?
 }
 
  # Same as err(), but prints the whole line in red.
 #
 errw() {
 	xtrace_off && trap xtrace_on RETURN
-	msg "$@"
+	msg "$@" || exit $?
 }
 
  # For Bahelite internal warnings and errors.
+#  These functions use BAHELITE_*_MESSAGES and should be preferred
+#  for use within Bahelite.
 #
 iwarn() {
 	xtrace_off && trap xtrace_on RETURN
@@ -260,7 +273,7 @@ iwarn() {
 }
 ierr() {
 	xtrace_off && trap xtrace_on RETURN
-	msg "$@"
+	msg "$@" || exit $?
 }
 
  # For internal use in alias functions, such as infow(), where we cannot use
@@ -295,9 +308,9 @@ plainmsg() {
 msg() {
 	# Internal! There should be no xtrace_off!
 	# xtrace_off && trap xtrace_on RETURN
-	local msgtype=  c=  cs=$__s  nonl  asterisk='  '  message  \
-	      message_nocolours redir=stdout  code=5  internal  key  \
-	      msg_key_exists  notifysend_rank  notifysend_icon
+	local  c cs="$__s"  nonl  asterisk='  '  message  message_nocolours  \
+	       redir=stdout  code=5  internal  key  msg_key_exists  \
+	       notifysend_rank  notifysend_icon
 	case "${FUNCNAME[1]}" in
 		*info*)  # all *info*
 			msgtype=info
@@ -357,40 +370,36 @@ msg() {
 	[ -v nonl ] && nonl='-n'
 	[ -v QUIET ] && redir='devnull'
 	[ -v MSG_USE_ARRAYS -o -v internal ] && {
-		# What was passed to us is not a message, but a key
-		# of a corresponding array.
-		#
-		# We cannot do
-		#     eval [ -v \"$prefix$msg_array[$message]\" ]
-		# here, becasue it will only work when $message item does exist,
-		# and if it doesn’t, bash will throw an error about wrong syntax.
-		# Actually, without nameref it would be hell to do this cycle.
+		#  What was passed to us is not a message per se,
+		#  but a key in the messages array.
+		message_key="${1:-}"
 		for key in "${!msg_array[@]}"; do
-			[ "$key" = "$*" ] && msg_key_exists=t
+			[ "$key" = "$message_key" ] && message_key_exists=t
 		done
-		if [ -v msg_key_exists ]; then
-			message="${msg_array[$@]}"
+		if [ -v message_key_exists ]; then
+			#  Positional parameters "$2..n" now can be substituted
+			#  into the message strings. To make these substitutions go
+			#  from the number 1, drop the $1, holding the message key.
+			shift
+			eval message=\"${msg_array[$message_key]}\"
 		else
-			failed_message=$message iwarn no such msg
-			# Quit, if the user has called err*() – he most probably
-			# intended to quit here.
-			[ "$msgtype" = err ] && ierr just quit || return $code
+			ierr 'no such msg' "$message_key"
 		fi
-	}|| message="$*"
-	# Removing blank space before message lines.
-	# This allows strings to be split across lines and at the same time
-	# be well-indented with tabs and/or spaces – indentation will be cut
-	# from the output.
+	}|| message="${1:-No message?}"
+	#  Removing blank space before message lines.
+	#  This allows strings to be split across lines and at the same time
+	#  be well-indented with tabs and/or spaces – indentation will be cut
+	#  from the output.
 	message=$(sed -r 's/^\s*//; s/\n\t/\n/g' <<<"$message")
 	message_nocolours=$(strip_colours "$message")
-	# Both fold and fmt use smaller width,
-	# if they deal with non-Latin characters.
+	#  Both fold and fmt use smaller width,
+	#  if they deal with non-Latin characters.
 	if [ -v BAHELITE_FOLD_MESSAGES ]; then
-		message=$(echo -e ${nonl:-} "$c$asterisk$cs$message$__s" \
+		message=$(echo -e ${nonl:-} "$c$asterisk$cs$message$cs" \
 		          | fold  -w $((TERM_COLS - MI_LEVEL*MI_SPACENUM -2)) -s \
 		          | sed -r "1s/^/${MI#  }/; 1!s/^/$MI/g" )
 	else
-		message=$(echo -e ${nonl:-} "$c$asterisk$cs$message$__s" \
+		message=$(echo -e ${nonl:-} "$c$asterisk$cs$message$cs" \
 		          | sed -r "1s/^/${MI#  }/; 1!s/^/$MI/g" )
 	fi
 	case $redir in
@@ -399,17 +408,17 @@ msg() {
 		devnull) : ;;
 	esac
 	[ ${notifysend_rank:--1} -ge 1 ] && {
-		# Stripping colours, that might be placed in the $message by user.
+		#  Stripping colours, that might be placed in the $message by user.
 		bahelite_notify_send "$message_nocolours" "${notifysend_icon:-}"
 	}
 	[ "$msgtype" = err ] && {
-		# If this is an error message, we must also quit
-		# with a certain exit/return code.
+		#  If this is an error message, we must also quit
+		#  with a certain exit/return code.
 		[ -v MSG_USE_ARRAYS ] && [ ${#ERROR_CODES[@]} -ne 0 ] \
 			&& code=${ERROR_CODES[$*]}
-		# Bahelite can be used in both sourced and standalone scripts
-		# code=5 by default.
-		[ -v BAHELITE_USE_RETURN ] && { return $code; :; } || exit $code
+		#  Bahelite can be used in both sourced and standalone scripts
+		#  code=5 by default.
+		return $code
 	}
 	return 0
 }

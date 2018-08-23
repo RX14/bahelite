@@ -32,7 +32,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_MENUS_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_MENUS_VER='1.2'
+BAHELITE_MODULE_MENUS_VER='1.2.1'
 
 # It is *highly* recommended to use “set -eE” in whatever script
 # you’re going to source it from.
@@ -74,6 +74,9 @@ BAHELITE_POOR_GRAPHIC=( '"' '"' '...' '-'   '|' '-' 'v' '^' '+' )
 #  SETS
 #      CHOSEN – selected option.
 #
+menu-bivar() { menu --mode bivariant -- "$@"; }
+menu-carousel() { menu --mode carousel -- "$@"; }
+menu-list() { menu --mode list -- "$@"; }
 menu() {
 	xtrace_off && trap xtrace_on RETURN
 	local mode pairs chosen_idx=0 start_idx choice_is_confirmed prompt \

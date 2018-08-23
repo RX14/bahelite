@@ -19,7 +19,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_ERROR_HANDLING_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_ERROR_HANDLING_VER='1.3.0'
+BAHELITE_MODULE_ERROR_HANDLING_VER='1.3.4'
 
  # Stores values, that environment variable $LINENO takes, in an array.
 #
@@ -83,6 +83,18 @@ BAHELITE_MODULE_ERROR_HANDLING_VER='1.3.0'
 #  Thus, the only way to avoid type 3 errors is to know them and use
 #    constructions in your code, that exclude any possibility
 #    of these errors happening.
+#  P.S. this trap on debug is also useless for catching forgotten backslashes
+#    in compound logic statements like
+#        if  (
+#              command1 \
+#              && command2 \
+#              && command3
+#            )  # <-- forgotten backslash
+#            ||
+#            foovar=bar
+#        then
+#            …
+#        fi
 #
 BAHELITE_STORED_LNOS=()
 
@@ -124,11 +136,6 @@ trapondebug() {
 	xtrace_off && trap xtrace_on RETURN
 	case "$1" in
 		set)
-			[ -o functrace ] || {
-				info "BAHELITE: enabling functrace for better error handling.
-				      (To remove this message put “set -T” before sourcing bahelite.sh."
-				set -T  # Without functrace option set this trap would have little sense.
-			}
 			#  Note the single quotes – to prevent early expansion
 			trap 'bahelite_on_each_command "$LINENO"' DEBUG
 			#  This is for the overridden set -x and set +x
@@ -145,12 +152,18 @@ trapondebug() {
 	return 0
 }
 
- #  Not enabled by default.
-#   (see the description to “trapondebug” function above).
+ # If functrace (set -T) enabled, enable the trap on debug for a better error
+#  tracing. See also the description to “trapondebug” function above.
 #
-#trapondebug set
+[ -o functrace ] && {
+	# info "BAHELITE: enabling functrace for better error handling."
+	trapondebug set
+}
 
 
+ # This function should be moved to the main model
+#  Error catching stuff should be put into a separate function.
+#
 bahelite_on_exit() {
 	local command="$1" retval="$2" stored_lnos="$3"
 	#  Catching internal bash errors, like “unbound variable”
@@ -166,7 +179,16 @@ bahelite_on_exit() {
 		                       "from_on_exit" "${stored_lnos##* }"
 	#  Run user’s on_exit().
 	[ "$(type -t on_exit)" = 'function' ] && on_exit
-	[ -d "$TMPDIR" ] && rm -rf "$TMPDIR"
+	[ -d "$TMPDIR"  -a  ! -v BAHELITE_DONT_CLEAR_TMPDIR ] && rm -rf "$TMPDIR"
+	[ -v BAHELITE_LOGGING_STARTED ] && {
+		#  Stop the logging tee nicely
+		#    Without this the script would seemingly quit, but the bash
+		#    process will keep hanging to support the logging tee.
+		#  Searching with a log name is important to not accidentally kill
+		#    the mother script’s tee, in case one script calls another,
+		#    and both of them use Bahelite.
+		pkill -PIPE  --session 0  -f "tee -a $LOG"
+	}
 	#  Not actually necessary as it’s a trap on exit,
 	#  the return code is frozen.
 	return 0
@@ -182,7 +204,8 @@ bahelite_show_error() {
 	#  that the programmer doesn’t need.
 	builtin set +x
 	local i line_number_to_print failed_command=$1 failed_command_code=$2 \
-	      from_on_exit="${3:-}" real_line_number=${4:-}
+	      from_on_exit="${3:-}" real_line_number=${4:-}  \
+	      log_path_copied_to_clipboard
 	# Since an error occurred, let all output go to stderr by default.
 	# Bad idea: to put “exec 2>&1” here
 	# Run user’s on_error().
@@ -216,16 +239,24 @@ bahelite_show_error() {
 	    | fold -w $((TERM_COLS-9)) -s \
 	    | sed -r '1 !s/^/         /g' >&2
 	echo
-	bahelite_notify_send "Bash error. See console." error
 	# Tell trap on EXIT, that $? > 0 was caused by an error, which
 	# has triggered SIGERR, we’ve already processed this error,
 	# so the trap on EXIT doesn’t have to call bahelite_show_error itself.
 	BAHELITE_ERROR_PROCESSED=t
-	[ "$LOG" != /dev/null ] && {
+	if [ -v BAHELITE_LOGGING_STARTED ]; then
+		which xclip &>/dev/null && {
+			echo -n "$LOG" | xclip
+			log_path_copied_to_clipboard='\n\n(Path to the log file is copied to clipboard.)'
+		}
+		bahelite_notify_send "Bash error. See the log.${log_path_copied_to_clipboard:-}" error
 		info "Log is written to
 		      $LOG"
-		echo -n "$LOG" | xclip ||:
-	}
+	else
+		bahelite_notify_send "Bash error. See console." error
+		warn "Logging wasn’t enabled in $MYNAME.
+		      Call start_log() someplace after sourcing bahelite.sh to enable logging.
+              If prepare_cachedir() is used too, it should be called before start_log()."
+	fi
 	return 0
 }
 
