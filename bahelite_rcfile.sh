@@ -14,7 +14,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_RCFILE_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_RCFILE_VER='1.3'
+BAHELITE_MODULE_RCFILE_VER='1.4'
 
 BAHELITE_ERROR_MESSAGES+=(
 	#  set_rcfile_from_args()
@@ -56,10 +56,13 @@ prepare_confdir() {
 	if [ -v EXAMPLECONFDIR ]; then
 		EXAMPLE_RCFILE="$EXAMPLECONFDIR/example.${MYNAME%.*}.rc.sh"
 		#  Copy or update config example.
-		[ -r "$EXAMPLE_RCFILE" ] && {
+		if [ -r "$EXAMPLE_RCFILE" ]; then
 			[ "$EXAMPLE_RCFILE" -nt "$CONFDIR/${EXAMPLE_RCFILE##*/}" ] \
 			&& cp "$EXAMPLE_RCFILE"  "$CONFDIR/${EXAMPLE_RCFILE##*/}"
-		}
+		else
+			: "no example RC file in EXAMPLECONFDIR."
+			unset EXAMPLE_RCFILE
+		fi
 	else
 		warn "Not copying example RC file: EXAMPLECONFDIR is not set.
 		      Run “set_exampleconfdir” before “prepare_confdir”."
@@ -196,7 +199,7 @@ set_rcfile_from_args() {
 read_rcfile() {
 	xtrace_off && trap xtrace_on RETURN
 	local  rcfile_min_ver="$1"  rcfile  example_rcfile  which_is_newer \
-	       rcfile_ver
+	       rcfile_ver  varname  missing_variable_list=()  plural_s  verb
 
 	if [ "${2:-}" ]; then
 		rcfile="$2"
@@ -235,6 +238,29 @@ read_rcfile() {
 			err "No RC file or example RC file was found!"
 		fi
 	fi
+
+	#  Verifying, that all the variables, which are specified in the example
+	#  config file, are present in the one, that the main script uses.
+	[ -r "$example_rcfile" ] && {
+		for varname in \
+			$(
+				old_vars="$(compgen -A variable)"
+				. "$example_rcfile"
+				new_vars="$(compgen -A variable)"
+				echo "$old_vars"$'\n'"${new_vars//old_vars/}" | sort | uniq -u
+			)
+		do
+			[ -v "$varname" ] || missing_variable_list+=( "$varname" )
+		done
+		[ ${#missing_variable_list[*]} -gt 0 ] && {
+			verb='is'
+			[ ${#missing_variable_list[*]} -gt 1 ] && plural_s='s' verb='are'
+			err "Config variable${plural_s:-} $verb missing: $(
+			        sed -r 's/ /, /g'<<<"${missing_variable_list[*]}"
+			    )"
+		}
+	}
+
 	#  Unsetting variables with a negative value
 	for varname in "${RCFILE_BOOLEAN_VARS[@]}"; do
 		is_true $varname --unset-if-not

@@ -19,7 +19,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_ERROR_HANDLING_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_ERROR_HANDLING_VER='1.3.4'
+BAHELITE_MODULE_ERROR_HANDLING_VER='1.4'
 
  # Stores values, that environment variable $LINENO takes, in an array.
 #
@@ -205,10 +205,21 @@ bahelite_show_error() {
 	builtin set +x
 	local i line_number_to_print failed_command=$1 failed_command_code=$2 \
 	      from_on_exit="${3:-}" real_line_number=${4:-}  \
-	      log_path_copied_to_clipboard
-	# Since an error occurred, let all output go to stderr by default.
-	# Bad idea: to put “exec 2>&1” here
-	# Run user’s on_error().
+	      log_path_copied_to_clipboard  varname
+	#  Dump variables
+	[ -v LOGDIR ] && {
+		for varname in \
+			$(
+				echo "$BAHELITE_STARTUP_VARLIST"$'\n'"$(compgen -A variable)" \
+					| sort | uniq -u
+			)
+		do
+			declare -p "$varname" &>>"$LOGDIR/variables"
+		done
+	}
+	#  Since an error occurred, let all output go to stderr by default.
+	#  Bad idea: to put “exec 2>&1” here
+	#  Run user’s on_error().
 	[ "$(type -t on_error)" = 'function' ] && on_error
 	trap '' DEBUG
 	xtrace_off && trap xtrace_on RETURN

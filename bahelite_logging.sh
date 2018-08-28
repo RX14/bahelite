@@ -49,8 +49,10 @@ start_log() {
 		}
 	fi
 	LOG="$LOGDIR/${MYNAME%.*}_$(date +%Y-%m-%d_%H:%M:%S).log"
-	# Removing old logs, keeping maximum of $LOG_KEEP_COUNT of recent logs.
+	#  Removing old logs, keeping maximum of $LOG_KEEP_COUNT of recent logs.
 	pushd "$LOGDIR" >/dev/null
+	#  Deleting leftover variable dump.
+	rm -f variables
 	noglob_off
 	( ls -r "${MYNAME%.*}_"* 2>/dev/null || : ) \
 		| tail -n+$BAHELITE_LOG_MAX_COUNT \

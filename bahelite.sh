@@ -336,5 +336,11 @@ check_required_utils() {
 #
 check_required_utils
 
+ # Before the main script starts, gather variables. In case of an error
+#  this list would be compared to the other, created before exiting,
+#  and the diff will be placed in "$LOGDIR/variables"
+#
+BAHELITE_STARTUP_VARLIST="$(compgen -A variable)"
+
 
 return 0

@@ -13,7 +13,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_MISC_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_MISC_VER='1.4'
+BAHELITE_MODULE_MISC_VER='1.5'
 
 
 #  It is *highly* recommended to use “set -eE” in whatever script
@@ -194,5 +194,43 @@ bahelite_check_directory() {
 	fi
 	return 0
 }
+
+
+ # Sets MYRANDOM global variable to a random number either fast or secure way
+#  Secure way may take seconds to complete.
+#  $1 – an integer number, which will define the range, [0..$1].
+#
+random-fast()   { random fast   "$@"; }
+random-secure() { random secure "$@"; }
+#
+ # Generic function
+#  $1 – mode, either “fast” or “secure”
+#  $2 – an integer number, which will define the range, [0..$1].
+#
+random() {
+	declare -g MYRANDOM
+	local mode="${1:-}" max_number="${2:-}"
+
+	case "$mode" in
+		fast)    random_source='/dev/urandom';;
+		secure)  random_source='/dev/random';;
+		*)  err 'Random source must be set to either “fast” or “secure”.'
+	esac
+	[ -r "$random_source" ] \
+		|| err "Random source file $random_source is not a readable file."
+
+	[[ "$max_number" =~ ^[0-9]+$ ]] \
+		|| err "The max. number is not specified, got “$max_number”."
+
+	 # $RANDOM is too bad to use even when security is not a concern,
+	#  because its seed works bad in containers, and 9/10 times returns
+	#  the same value, if you call $RANDOM with equal time spans of one hour.
+	#
+	#  MYRANDOM will be set to a number between 0 and $max_number inclusively.
+	#
+	MYRANDOM=$(shuf --random-source=$random_source -r -n 1 -i 0-$max_number)
+	return 0
+}
+
 
 return 0
