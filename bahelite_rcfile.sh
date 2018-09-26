@@ -14,7 +14,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_RCFILE_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_RCFILE_VER='1.4'
+BAHELITE_MODULE_RCFILE_VER='1.4.1'
 
 BAHELITE_ERROR_MESSAGES+=(
 	#  set_rcfile_from_args()
@@ -221,7 +221,7 @@ read_rcfile() {
 	if [ -r "$rcfile" ]; then
 		#  Verifying RC file version
 		rcfile_ver=$(
-			sed -rn "1 s/\s*#\s*(${rcfile##*/}|${MYNAME%.sh}.rc.sh) v([0-9\.]+)\s*$/\2/p" \
+			sed -rn "1 s/\s*#\s*(${rcfile##*/}|${MYNAME%.sh}.rc.sh)\s+v([0-9\.]+)\s*$/\2/p" \
 			        "$rcfile"
 		)
 		which_is_newer=$(compare_versions "$rcfile_ver" "$rcfile_min_ver")

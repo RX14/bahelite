@@ -205,13 +205,16 @@ bahelite_show_error() {
 	builtin set +x
 	local i line_number_to_print failed_command=$1 failed_command_code=$2 \
 	      from_on_exit="${3:-}" real_line_number=${4:-}  \
-	      log_path_copied_to_clipboard  varname
+	      log_path_copied_to_clipboard  varname  current_varlist
 	#  Dump variables
 	[ -v LOGDIR ] && {
+		current_varlist=$(
+			compgen -A variable | grep -v BAHELITE_STARTUP_VARLIST
+		)
 		for varname in \
 			$(
-				echo "$BAHELITE_STARTUP_VARLIST"$'\n'"$(compgen -A variable)" \
-					| sort | uniq -u
+				echo "$BAHELITE_STARTUP_VARLIST"$'\n'"$current_varlist" \
+					| sort | uniq -u | sort
 			)
 		do
 			declare -p "$varname" &>>"$LOGDIR/variables"

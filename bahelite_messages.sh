@@ -14,7 +14,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_MESSAGES_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_MESSAGES_VER='2.0.1'
+BAHELITE_MODULE_MESSAGES_VER='2.1.1'
 
  # Define this variable for info messages to have icon
 #
@@ -263,6 +263,11 @@ errw() {
 	msg "$@" || exit $?
 }
 
+abort() {
+	xtrace_off && trap xtrace_on RETURN
+	msg "$@" || exit $?
+}
+
  # For Bahelite internal warnings and errors.
 #  These functions use BAHELITE_*_MESSAGES and should be preferred
 #  for use within Bahelite.
@@ -308,22 +313,22 @@ plainmsg() {
 msg() {
 	# Internal! There should be no xtrace_off!
 	# xtrace_off && trap xtrace_on RETURN
-	local  c cs="$__s"  nonl  asterisk='  '  message  message_nocolours  \
+	local  colour cs="$__s"  nonl  asterisk='  '  message  message_nocolours  \
 	       redir=stdout  code=5  internal  key  msg_key_exists  \
 	       notifysend_rank  notifysend_icon
 	case "${FUNCNAME[1]}" in
-		*info*)  # all *info*
+		*info*|abort)  # all *info*
 			msgtype=info
 			local -n  msg_array=INFO_MESSAGES
-			local -n  c=info_colour
+			local -n  colour=info_colour
 			;;&
-		info|infon|info-ns)
+		info|infon|info-ns|abort)
 			asterisk="* ${MSG_ASTERISK_PLUS_WORD:+INFO: }"
 			;;&
-		info-ns)
+		info-ns|abort)
 			notifysend_rank=1
 			[ -v BAHELITE_INFO_MSG_USE_ICON ] && notifysend_icon='info'
-			;;
+			;;&
 		infow)
 			asterisk="* ${MSG_ASTERISK_PLUS_WORD:+RUNNING: }"
 			nonl=t
@@ -334,7 +339,7 @@ msg() {
 		*warn*)
 			msgtype=warn redir='stderr'
 			local -n  msg_array=WARNING_MESSAGES
-			local -n  c=warn_colour
+			local -n  colour=warn_colour
 			asterisk="* ${MSG_ASTERISK_PLUS_WORD:+WARNING: }"
 		    ;;&
 		warn-ns)
@@ -366,6 +371,10 @@ msg() {
 			# For internal messages.
 			local -n  msg_array=BAHELITE_ERROR_MESSAGES
 			;;
+		abort)
+			msgtype='abort'
+			code=6
+			;;
 	esac
 	[ -v nonl ] && nonl='-n'
 	[ -v QUIET ] && redir='devnull'
@@ -395,11 +404,11 @@ msg() {
 	#  Both fold and fmt use smaller width,
 	#  if they deal with non-Latin characters.
 	if [ -v BAHELITE_FOLD_MESSAGES ]; then
-		message=$(echo -e ${nonl:-} "$c$asterisk$cs$message$cs" \
+		message=$(echo -e ${nonl:-} "${colour:-}$asterisk$cs$message$cs" \
 		          | fold  -w $((TERM_COLS - MI_LEVEL*MI_SPACENUM -2)) -s \
 		          | sed -r "1s/^/${MI#  }/; 1!s/^/$MI/g" )
 	else
-		message=$(echo -e ${nonl:-} "$c$asterisk$cs$message$cs" \
+		message=$(echo -e ${nonl:-} "${colour:-}$asterisk$cs$message$cs" \
 		          | sed -r "1s/^/${MI#  }/; 1!s/^/$MI/g" )
 	fi
 	case $redir in
@@ -411,13 +420,14 @@ msg() {
 		#  Stripping colours, that might be placed in the $message by user.
 		bahelite_notify_send "$message_nocolours" "${notifysend_icon:-}"
 	}
-	[ "$msgtype" = err ] && {
+	[[ "$msgtype" =~ ^(err|abort)$ ]] && {
 		#  If this is an error message, we must also quit
 		#  with a certain exit/return code.
 		[ -v MSG_USE_ARRAYS ] && [ ${#ERROR_CODES[@]} -ne 0 ] \
 			&& code=${ERROR_CODES[$*]}
-		#  Bahelite can be used in both sourced and standalone scripts
-		#  code=5 by default.
+		#  Bahelite can be used in both sourced and standalone scripts.
+		#  Default error codes are 5 for an error, 6 for abort.
+		#  Abort is for the case when user stops the program at some step.
 		return $code
 	}
 	return 0

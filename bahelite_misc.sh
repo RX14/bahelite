@@ -13,7 +13,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_MISC_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_MISC_VER='1.5'
+BAHELITE_MODULE_MISC_VER='1.6'
 
 
 #  It is *highly* recommended to use “set -eE” in whatever script
@@ -229,6 +229,25 @@ random() {
 	#  MYRANDOM will be set to a number between 0 and $max_number inclusively.
 	#
 	MYRANDOM=$(shuf --random-source=$random_source -r -n 1 -i 0-$max_number)
+	return 0
+}
+
+
+ # Removes or replaces characters, that are forbidden in Windows™ filenames.
+#  $1 – a string, in which the characters have to be replaced.
+#  Returns a new string to stdout.
+#
+remove_windows_unfriendly_chars() {
+	local str="${1:-}"
+	str=${str//\</\(}
+	str=${str//\>/\)}
+	str=${str//\:/\.}
+	str=${str//\"/\'}
+	str=${str//\\/}
+	str=${str//\|/}
+	str=${str//\?/}
+	str=${str//\*/}
+	echo "$str"
 	return 0
 }
 

@@ -32,7 +32,7 @@
 # Avoid sourcing twice
 [ -v BAHELITE_MODULE_MENUS_VER ] && return 0
 #  Declaring presence of this module for other modules.
-BAHELITE_MODULE_MENUS_VER='1.2.1'
+BAHELITE_MODULE_MENUS_VER='1.2.2'
 
 # It is *highly* recommended to use “set -eE” in whatever script
 # you’re going to source it from.
@@ -79,7 +79,8 @@ menu-carousel() { menu --mode carousel -- "$@"; }
 menu-list() { menu --mode list -- "$@"; }
 menu() {
 	xtrace_off && trap xtrace_on RETURN
-	local mode pairs chosen_idx=0 start_idx choice_is_confirmed prompt \
+	local mode  pairs  chosen_idx=0  start_idx  \
+	      choice_is_confirmed  prompt \
 	      options=() optvals=() option \
 	      rest arrow_up=$'\e[A' arrow_right=$'\e[C' \
 	      arrow_down=$'\e[B' arrow_left=$'\e[D' clear_line=$'\r\e[K' \
@@ -117,19 +118,6 @@ menu() {
 						local au=${graphic[7]}  # arrow up
 						local di=${graphic[8]}  # diamond
 						;;
-					*)
-						warn "Possible modes are:
-						      - “2”, “bi”, “bivariant” – two variants shown on one line,
-						        switch flips and highlights either one or the other;
-						      - “c”, “carousel” – this switch shows one variant of several
-						        possible, only one is shown at a time. Two arrows are shown
-						        to the left and to the right;
-						      - “l”, “list” – a vertical list with a running cursor. Each line
-						        represents an item. Each item may have a value: the --pairs
-						        key makes each second parameter becomes the default value
-						        of the key preceding it."
-						err "No such mode: “$2”."
-						;;
 				esac
 				shift 2
 				;;
@@ -159,6 +147,19 @@ menu() {
 				;;
 		esac
 	done
+	[ -v mode ] || {
+		warn "Possible modes are:
+		      - “2”, “bi”, “bivariant” – two variants shown on one line,
+		        switch flips and highlights either one or the other;
+		      - “c”, “carousel” – this switch shows one variant of several
+		        possible, only one is shown at a time. Two arrows are shown
+		        to the left and to the right;
+		      - “l”, “list” – a vertical list with a running cursor. Each line
+		        represents an item. Each item may have a value: the --pairs
+		        key makes each second parameter becomes the default value
+		        of the key preceding it."
+		err "No such mode: “$2”."
+	}
 	[ -v pairs -a "$mode" != list ] \
 		&& err 'Pairs of keys and values work only with --mode list!'
 	# [ "${OVERRIDE_DEFAULT:-}" ] && chosen_idx="$OVERRIDE_DEFAULT"
@@ -192,6 +193,8 @@ menu() {
 	[ $mode = bivariant ] && {
 		[ $chosen_idx -eq 0 ] && right='' || left=''
 	}
+	(( ${#options[@]} < 2 )) \
+		&& err "${FUNCNAME[0]}: needs two or more items to choose from."
 	until [ -v choice_is_confirmed ]; do
 		[ -v BAHELITE_MENU_CLEAR_SCREEN ] && clear
 		case "$mode" in
